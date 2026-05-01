@@ -1,12 +1,11 @@
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Montserrat", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Playfair Display", serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
   
-  --color-brand-bg: #F5F2ED;
-  --color-brand-gold: #C5A03F;
+  --color-brand-bg: #F5F5F3;
   --color-brand-black: #1A1A1A;
   --color-brand-casual: #3B82F6;
   --color-brand-business: #10B981;
@@ -15,39 +14,23 @@
 
 @layer base {
   body {
-    @apply bg-brand-bg text-brand-black antialiased font-sans selection:bg-brand-gold selection:text-white;
+    @apply bg-brand-bg text-brand-black antialiased font-sans selection:bg-black selection:text-white;
   }
 
   h1, h2, h3, h4, h5, h6 {
-    @apply font-display tracking-tight leading-tight;
+    @apply font-display tracking-tighter leading-none font-bold;
   }
 }
 
-.luxury-card {
-  @apply bg-white rounded-[40px] overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-all duration-500;
-}
-
-.segmented-control {
-  @apply inline-flex bg-white/50 backdrop-blur-sm p-1 rounded-full border border-black/5;
-}
-
-.segmented-item {
-  @apply px-6 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all duration-300;
-}
-
-.segmented-item-active {
-  @apply bg-brand-gold text-white shadow-lg;
+.bento-card {
+  @apply bg-white border border-black/10 rounded-3xl overflow-hidden shadow-sm transition-all duration-300;
 }
 
 .scanner-beam {
-  background: linear-gradient(to bottom, transparent, rgba(197, 160, 63, 0.2), transparent);
-  height: 120px;
+  background: linear-gradient(to bottom, transparent, rgba(0,0,0,0.1), transparent);
+  height: 100px;
   width: 100%;
   position: absolute;
-  top: -120px;
-  opacity: 0.8;
-}
-
-.gold-glow {
-  text-shadow: 0 0 20px rgba(197, 160, 63, 0.2);
+  top: -100px;
+  opacity: 0.5;
 }
