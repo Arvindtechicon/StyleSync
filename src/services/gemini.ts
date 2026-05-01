@@ -73,6 +73,11 @@ export async function analyzeItem(base64Image: string, mimeType: string): Promis
         required: ["colorPalette", "styleTags", "itemDescription", "outfits"]
       }
     }
+  }).catch(err => {
+    if (err?.message?.includes("429") || err?.message?.includes("RESOURCE_EXHAUSTED")) {
+      throw new Error("QUOTA_EXCEEDED");
+    }
+    throw err;
   });
 
   return JSON.parse(response.text || "{}") as AnalysisResult;
@@ -91,6 +96,11 @@ export async function generateOutfitImage(prompt: string, base64Image: string, m
           Clean white background, high-end photography, cinematic lighting, organized layout, isolated on white.` }
       ]
     }
+  }).catch(err => {
+    if (err?.message?.includes("429") || err?.message?.includes("RESOURCE_EXHAUSTED")) {
+      throw new Error("QUOTA_EXCEEDED");
+    }
+    throw err;
   });
 
   for (const part of response.candidates?.[0]?.content?.parts || []) {
@@ -116,6 +126,11 @@ export async function generateModelImage(prompt: string, base64Image: string, mi
           Setting: Urban chic background, studio lighting, professional model posing, cinematic street photography style, high-end magazine aesthetic.` }
       ]
     }
+  }).catch(err => {
+    if (err?.message?.includes("429") || err?.message?.includes("RESOURCE_EXHAUSTED")) {
+      throw new Error("QUOTA_EXCEEDED");
+    }
+    throw err;
   });
 
   for (const part of response.candidates?.[0]?.content?.parts || []) {
