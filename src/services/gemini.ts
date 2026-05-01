@@ -18,18 +18,10 @@ export interface AnalysisResult {
   outfits: OutfitRecommendation[];
 }
 
-export async function analyzeItem(base64Image: string, mimeType: string, customOutfit?: { data: string, mime: string }): Promise<AnalysisResult> {
+export async function analyzeItem(base64Image: string, mimeType: string): Promise<AnalysisResult> {
   const model = "gemini-3-flash-preview";
   
-  const prompt = customOutfit 
-    ? `Perform a "Custom Virtual Try-on Analysis".
-       1. Analyze the person in the first image (Body type, features).
-       2. Analyze the specific clothing item/outfit in the second image.
-       3. Suggest how this specific outfit should be styled for this person.
-       4. Return "outfits" array with a single entry of type "Business" (repurposed for custom) specifically detailing how to wear this item.
-       
-       OUTPUT: Return the analysis of both inputs. In the 'visualPrompt' for the outfit, provide instructions to place the EXACT clothing from image 2 onto the person from image 1.`
-    : `Perform a comprehensive "Full Appearance & Style Analysis" on the person in this image. 
+  const prompt = `Perform a comprehensive "Full Appearance & Style Analysis" on the person in this image. 
 
   1. Analyze:
      - Body type and silhouette.
@@ -48,17 +40,14 @@ export async function analyzeItem(base64Image: string, mimeType: string, customO
      - A summary of the analysis (body type and features).
      - Detailed recommendations for each outfit type, including a 'flat-lay' image generation prompt that describes the specific pieces, colors, and textures in a coordinated layout.`;
 
-  const contents = {
-    parts: [
-      { inlineData: { data: base64Image, mimeType } },
-      ...(customOutfit ? [{ inlineData: { data: customOutfit.data, mimeType: customOutfit.mime } }] : []),
-      { text: prompt }
-    ]
-  };
-
   const response = await ai.models.generateContent({
     model,
-    contents,
+    contents: {
+      parts: [
+        { inlineData: { data: base64Image, mimeType } },
+        { text: prompt }
+      ]
+    },
     config: {
       responseMimeType: "application/json",
       responseSchema: {
@@ -92,34 +81,22 @@ export async function analyzeItem(base64Image: string, mimeType: string, customO
 export async function generateOutfitImage(prompt: string, base64Image: string, mimeType: string): Promise<string> {
   const model = "gemini-2.5-flash-image";
   
-  try {
-    const response = await ai.models.generateContent({
-      model,
-      contents: {
-        parts: [
-          { inlineData: { data: base64Image, mimeType } },
-          { text: `A professional fashion flat-lay photo of: ${prompt}. 
-            The ensemble should be curated for the person in the reference photo, but features entirely new pieces as described in the prompt.
-            Clean white background, high-end photography, cinematic lighting, organized layout, isolated on white.` }
-        ]
-      }
-    });
+  const response = await ai.models.generateContent({
+    model,
+    contents: {
+      parts: [
+        { inlineData: { data: base64Image, mimeType } },
+        { text: `A professional fashion flat-lay photo of: ${prompt}. 
+          The ensemble should be curated for the person in the reference photo, but features entirely new pieces as described in the prompt.
+          Clean white background, high-end photography, cinematic lighting, organized layout, isolated on white.` }
+      ]
+    }
+  });
 
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) {
-        return `data:image/png;base64,${part.inlineData.data}`;
-      }
+  for (const part of response.candidates?.[0]?.content?.parts || []) {
+    if (part.inlineData) {
+      return `data:image/png;base64,${part.inlineData.data}`;
     }
-
-    const finishReason = response.candidates?.[0]?.finishReason;
-    if (finishReason === "SAFETY") {
-      throw new Error("IMAGE_SAFETY_BLOCKED");
-    }
-  } catch (error: any) {
-    if (error?.message?.includes("429") || error?.message?.includes("RESOURCE_EXHAUSTED")) {
-      throw new Error("QUOTA_EXHAUSTED");
-    }
-    throw error;
   }
 
   throw new Error("Failed to generate image");
@@ -128,30 +105,23 @@ export async function generateOutfitImage(prompt: string, base64Image: string, m
 export async function generateModelImage(prompt: string, base64Image: string, mimeType: string): Promise<string> {
   const model = "gemini-2.5-flash-image";
   
-  try {
-    const response = await ai.models.generateContent({
-      model,
-      contents: {
-        parts: [
-          { inlineData: { data: base64Image, mimeType } },
-          { text: `A high-end fashion editorial full-body photo. 
-            STRICT REQUIREMENT: Maintain the EXACT facial features, skin tone, and likeness of the person in the provided image. 
-            The person should be wearing: ${prompt}. 
-            Setting: Urban chic background, studio lighting, professional model posing, cinematic street photography style, high-end magazine aesthetic.` }
-        ]
-      }
-    });
+  const response = await ai.models.generateContent({
+    model,
+    contents: {
+      parts: [
+        { inlineData: { data: base64Image, mimeType } },
+        { text: `A high-end fashion editorial full-body photo. 
+          STRICT REQUIREMENT: Maintain the EXACT facial features, skin tone, and likeness of the person in the provided image. 
+          The person should be wearing: ${prompt}. 
+          Setting: Urban chic background, studio lighting, professional model posing, cinematic street photography style, high-end magazine aesthetic.` }
+      ]
+    }
+  });
 
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) {
-        return `data:image/png;base64,${part.inlineData.data}`;
-      }
+  for (const part of response.candidates?.[0]?.content?.parts || []) {
+    if (part.inlineData) {
+      return `data:image/png;base64,${part.inlineData.data}`;
     }
-  } catch (error: any) {
-    if (error?.message?.includes("429") || error?.message?.includes("RESOURCE_EXHAUSTED")) {
-      throw new Error("QUOTA_EXHAUSTED");
-    }
-    throw error;
   }
 
   throw new Error("Failed to generate model image");

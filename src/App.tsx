@@ -10,28 +10,21 @@ import html2canvas from "html2canvas";
 import { analyzeItem, generateOutfitImage, generateModelImage, type AnalysisResult, type OutfitRecommendation } from "./services/gemini";
 
 export default function App() {
-  const [mode, setMode] = useState<"ordinary" | "custom">("ordinary");
   const [image, setImage] = useState<string | null>(null);
-  const [outfitImage, setOutfitImage] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [generatingImages, setGeneratingImages] = useState<Record<string, boolean>>({});
   const [generatingModels, setGeneratingModels] = useState<Record<string, boolean>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const outfitInputRef = useRef<HTMLInputElement>(null);
   const outfitRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, type: "user" | "outfit") => {
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
-        if (type === "user") {
-          setImage(reader.result as string);
-        } else {
-          setOutfitImage(reader.result as string);
-        }
-        setResult(null);
+        setImage(reader.result as string);
+        setResult(null); // Reset result on new upload
       };
       reader.readAsDataURL(file);
     }
@@ -39,33 +32,16 @@ export default function App() {
 
   const startAnalysis = async () => {
     if (!image) return;
-    if (mode === "custom" && !outfitImage) {
-      alert("Please upload the outfit you want to try on.");
-      return;
-    }
-
     setAnalyzing(true);
     try {
       const base64Data = image.split(",")[1];
       const mimeType = image.split(";")[0].split(":")[1];
-      
-      let customOutfit = undefined;
-      if (mode === "custom" && outfitImage) {
-        customOutfit = {
-          data: outfitImage.split(",")[1],
-          mime: outfitImage.split(";")[0].split(":")[1]
-        };
-      }
-
-      const data = await analyzeItem(base64Data, mimeType, customOutfit);
+      const data = await analyzeItem(base64Data, mimeType);
       setResult(data);
       
+      // Auto-trigger image generation for the first outfit
       if (data.outfits.length > 0) {
-        if (mode === "custom") {
-          generateModelView(data.outfits[0]);
-        } else {
-          generateImage(data.outfits[0]);
-        }
+        generateImage(data.outfits[0]);
       }
     } catch (error) {
       console.error("Analysis failed:", error);
@@ -92,15 +68,8 @@ export default function App() {
           )
         };
       });
-    } catch (error: any) {
+    } catch (error) {
       console.error("Image generation failed:", error);
-      if (error.message === "QUOTA_EXHAUSTED") {
-        alert("The AI image generation limit has been reached. Please wait a minute and try again.");
-      } else if (error.message === "IMAGE_SAFETY_BLOCKED") {
-        alert("This generation was blocked by safety filters.");
-      } else {
-        alert("Failed to generate image. Please try again.");
-      }
     } finally {
       setGeneratingImages(prev => ({ ...prev, [outfit.type]: false }));
     }
@@ -123,15 +92,8 @@ export default function App() {
           )
         };
       });
-    } catch (error: any) {
+    } catch (error) {
       console.error("Model image generation failed:", error);
-      if (error.message === "QUOTA_EXHAUSTED") {
-        alert("The AI visualization limit has been reached. Please wait a minute.");
-      } else if (error.message === "IMAGE_SAFETY_BLOCKED") {
-        alert("This editorial view was blocked by safety filters.");
-      } else {
-        alert("Failed to generate editorial view. Please try again.");
-      }
     } finally {
       setGeneratingModels(prev => ({ ...prev, [outfit.type]: false }));
     }
@@ -212,7 +174,7 @@ export default function App() {
               </div>
             )}
             <button 
-              onClick={() => { setImage(null); setOutfitImage(null); setResult(null); }}
+              onClick={() => { setImage(null); setResult(null); }}
               className="bg-black text-white px-6 py-2 rounded-full text-xs font-bold hover:bg-zinc-800 transition-colors uppercase tracking-widest"
             >
               New Scan
@@ -223,109 +185,82 @@ export default function App() {
         {/* Input Column */}
         <section className={`${result ? "col-span-12 lg:col-span-5" : "col-span-12"} transition-all duration-500`}>
           <div className="bento-card h-full flex flex-col bg-white">
-            <div className="p-6 border-b border-black/5 flex flex-col md:flex-row justify-between items-center gap-4">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-black/40">Analysis Mode</span>
-              <div className="flex bg-black/5 p-1 rounded-full border border-black/5">
-                <button 
-                  onClick={() => { setMode("ordinary"); setResult(null); }}
-                  className={`px-4 py-1.5 rounded-full text-[10px] font-bold uppercase transition-all ${mode === "ordinary" ? "bg-white shadow-sm text-black" : "text-black/40 hover:text-black/60"}`}
-                >
-                  Ordinary
-                </button>
-                <button 
-                  onClick={() => { setMode("custom"); setResult(null); }}
-                  className={`px-4 py-1.5 rounded-full text-[10px] font-bold uppercase transition-all ${mode === "custom" ? "bg-white shadow-sm text-black" : "text-black/40 hover:text-black/60"}`}
-                >
-                  Custom Outfit
-                </button>
-              </div>
+            <div className="p-6 border-b border-black/5 flex justify-between items-center">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-black/40">Input Source</span>
+              {image && (
+                <span className="px-3 py-1 bg-brand-business/10 text-brand-business rounded-full text-[10px] font-bold uppercase">
+                  Verified Texture
+                </span>
+              )}
             </div>
 
-            <div className={`relative flex-1 ${result ? "min-h-[400px]" : "min-h-[60vh]"} bg-[#EEEEEA] p-8 group overflow-hidden flex items-center justify-center`}>
+            <div className={`relative flex-1 ${result ? "min-h-[400px]" : "min-h-[60vh]"} bg-[#EEEEEA] flex items-center justify-center p-8 group overflow-hidden`}>
               <input 
                 type="file" 
                 ref={fileInputRef}
-                onChange={(e) => handleFileUpload(e, "user")}
-                accept="image/*"
-                className="hidden"
-              />
-              <input 
-                type="file" 
-                ref={outfitInputRef}
-                onChange={(e) => handleFileUpload(e, "outfit")}
+                onChange={handleFileUpload}
                 accept="image/*"
                 className="hidden"
               />
               
-              <div className={`grid w-full h-full gap-8 ${mode === "custom" ? "grid-cols-2" : "grid-cols-1"}`}>
-                {/* User Photo Box */}
+              {!image ? (
                 <div 
                   onClick={() => fileInputRef.current?.click()}
-                  className={`relative flex items-center justify-center rounded-2xl border-2 border-dashed transition-all duration-300 cursor-pointer overflow-hidden ${!image ? "border-black/10 hover:border-black/30 hover:bg-white/50" : "border-transparent shadow-xl border-8 border-white"}`}
+                  className="flex flex-col items-center gap-4 cursor-pointer hover:scale-105 transition-transform duration-500"
                 >
-                  {!image ? (
-                    <div className="flex flex-col items-center gap-4 text-center p-4">
-                      <div className="w-16 h-16 rounded-full bg-white shadow flex items-center justify-center">
-                        <Camera className="w-6 h-6 text-black/20" />
-                      </div>
-                      <div>
-                        <p className="font-display font-bold text-sm tracking-tight uppercase">User Photo</p>
-                        <p className="text-black/40 text-[9px] font-medium uppercase leading-tight mt-1">Full body photo preferred</p>
-                      </div>
-                    </div>
-                  ) : (
-                    <img src={image} alt="User" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                  )}
-                  {analyzing && image && (
-                    <motion.div 
-                      initial={{ top: "-10%" }}
-                      animate={{ top: "110%" }}
-                      transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
-                      className="scanner-beam z-20"
-                    />
-                  )}
+                  <div className="w-20 h-20 rounded-full bg-white shadow-xl flex items-center justify-center group-hover:bg-black transition-colors">
+                    <Camera className="w-8 h-8 text-black/20 group-hover:text-white" />
+                  </div>
+                  <div className="text-center">
+                    <p className="font-display font-bold text-xl tracking-tight uppercase">Analyze Your Style</p>
+                    <p className="text-black/40 text-[11px] font-medium uppercase tracking-widest">Upload your photo for a total makeover</p>
+                  </div>
                 </div>
-
-                {/* Outfit Photo Box (Custom Mode Only) */}
-                {mode === "custom" && (
-                  <div 
-                    onClick={() => outfitInputRef.current?.click()}
-                    className={`relative flex items-center justify-center rounded-2xl border-2 border-dashed transition-all duration-300 cursor-pointer overflow-hidden ${!outfitImage ? "border-black/10 hover:border-black/30 hover:bg-white/50" : "border-transparent shadow-xl border-8 border-white"}`}
+              ) : (
+                <div className="relative w-full h-full flex items-center justify-center">
+                  <motion.div 
+                    initial={{ scale: 0.9, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    className="relative z-10 w-full max-w-sm aspect-[3/4] rounded-2xl shadow-2xl overflow-hidden border-8 border-white"
                   >
-                    {!outfitImage ? (
-                      <div className="flex flex-col items-center gap-4 text-center p-4">
-                        <div className="w-16 h-16 rounded-full bg-white shadow flex items-center justify-center">
-                          <Upload className="w-6 h-6 text-black/20" />
-                        </div>
-                        <div>
-                          <p className="font-display font-bold text-sm tracking-tight uppercase">Target Outfit</p>
-                          <p className="text-black/40 text-[9px] font-medium uppercase leading-tight mt-1">Product image or screenshot</p>
-                        </div>
-                      </div>
-                    ) : (
-                      <img src={outfitImage} alt="Outfit" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    <img src={image} alt="Source" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    {analyzing && (
+                      <motion.div 
+                        initial={{ top: "-10%" }}
+                        animate={{ top: "110%" }}
+                        transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
+                        className="scanner-beam z-20"
+                        style={{ background: 'linear-gradient(to bottom, transparent, rgba(0,0,0,0.5), transparent)' }}
+                      />
                     )}
-                  </div>
-                )}
-              </div>
+                  </motion.div>
 
-              {result && (
-                <motion.div 
-                  initial={{ y: 20, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  className="absolute bottom-4 left-4 right-4 bg-white/90 backdrop-blur-md p-4 rounded-xl border border-white/50 shadow-lg z-20"
-                >
-                  <div className="flex gap-2 mb-2 flex-wrap">
-                    {result.styleTags.slice(0, 3).map(tag => (
-                      <span key={tag} className="text-[9px] font-bold uppercase tracking-widest text-black/40 italic">#{tag}</span>
-                    ))}
-                  </div>
-                  <p className="text-[11px] font-bold leading-tight line-clamp-2">{result.itemDescription}</p>
-                </motion.div>
+                  {result && (
+                    <motion.div 
+                      initial={{ y: 20, opacity: 0 }}
+                      animate={{ y: 0, opacity: 1 }}
+                      className="absolute bottom-4 left-4 right-4 bg-white/90 backdrop-blur-md p-4 rounded-xl border border-white/50 shadow-lg z-20"
+                    >
+                      <div className="flex gap-2 mb-2 flex-wrap">
+                        {result.styleTags.slice(0, 3).map(tag => (
+                          <span key={tag} className="text-[9px] font-bold uppercase tracking-widest text-black/40 italic">#{tag}</span>
+                        ))}
+                      </div>
+                      <p className="text-[11px] font-bold leading-tight line-clamp-2">{result.itemDescription}</p>
+                    </motion.div>
+                  )}
+
+                  <button 
+                    onClick={() => fileInputRef.current?.click()}
+                    className="absolute top-4 right-4 bg-white/20 hover:bg-white/40 backdrop-blur p-2 rounded-full transition-colors z-20"
+                  >
+                    <RefreshCw className="w-4 h-4 text-black" />
+                  </button>
+                </div>
               )}
             </div>
 
-            {image && (mode === "ordinary" || outfitImage) && !result && (
+            {image && !result && (
               <div className="p-6 bg-white">
                 <motion.button
                   onClick={startAnalysis}
