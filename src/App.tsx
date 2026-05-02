@@ -15,6 +15,9 @@ export default function App() {
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [generatingImages, setGeneratingImages] = useState<Record<string, boolean>>({});
   const [generatingModels, setGeneratingModels] = useState<Record<string, boolean>>({});
+  const [errors, setErrors] = useState<Record<string, { message: string, type: 'flat' | 'model' | 'global' } | null>>({});
+  const [selectedOutfitIdx, setSelectedOutfitIdx] = useState<number | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const outfitRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -33,19 +36,24 @@ export default function App() {
   const startAnalysis = async () => {
     if (!image) return;
     setAnalyzing(true);
+    setErrors(prev => ({ ...prev, global: null }));
     try {
       const base64Data = image.split(",")[1];
       const mimeType = image.split(";")[0].split(":")[1];
       const data = await analyzeItem(base64Data, mimeType);
       setResult(data);
       
-      // Auto-trigger image generation for the first outfit
-      if (data.outfits.length > 0) {
-        generateImage(data.outfits[0]);
-      }
+      // Automatically trigger flat-lay generation for all three outfits in parallel
+      data.outfits.forEach(outfit => {
+        generateImage(outfit);
+      });
     } catch (error) {
-      console.error("Analysis failed:", error);
-      alert("Failed to analyze image. Please try again.");
+      console.error("Analysis failed:", (error as Error).message);
+      if ((error as Error).message === "QUOTA_EXCEEDED") {
+        setErrors(prev => ({ ...prev, global: { message: "The fashion studio is currently at capacity. Please wait a moment and try again.", type: 'global' } }));
+      } else {
+        setErrors(prev => ({ ...prev, global: { message: "Analysis encountered an issue. Please try again.", type: 'global' } }));
+      }
     } finally {
       setAnalyzing(false);
     }
@@ -55,6 +63,7 @@ export default function App() {
     if (outfit.image || generatingImages[outfit.type] || !image) return;
 
     setGeneratingImages(prev => ({ ...prev, [outfit.type]: true }));
+    setErrors(prev => ({ ...prev, [outfit.type]: null }));
     try {
       const base64Data = image.split(",")[1];
       const mimeType = image.split(";")[0].split(":")[1];
@@ -69,7 +78,15 @@ export default function App() {
         };
       });
     } catch (error) {
-      console.error("Image generation failed:", error);
+      console.error("Image generation failed:", (error as Error).message);
+      const isQuota = (error as Error).message === "QUOTA_EXCEEDED";
+      setErrors(prev => ({ 
+        ...prev, 
+        [outfit.type]: { 
+          message: isQuota ? "Studio limit reached. Try again shortly." : "Failed to compose outfit. Tap to retry.", 
+          type: 'flat' 
+        } 
+      }));
     } finally {
       setGeneratingImages(prev => ({ ...prev, [outfit.type]: false }));
     }
@@ -79,6 +96,7 @@ export default function App() {
     if (outfit.modelImage || generatingModels[outfit.type] || !image) return;
 
     setGeneratingModels(prev => ({ ...prev, [outfit.type]: true }));
+    setErrors(prev => ({ ...prev, [outfit.type]: null }));
     try {
       const base64Data = image.split(",")[1];
       const mimeType = image.split(";")[0].split(":")[1];
@@ -93,7 +111,15 @@ export default function App() {
         };
       });
     } catch (error) {
-      console.error("Model image generation failed:", error);
+      console.error("Model image generation failed:", (error as Error).message);
+      const isQuota = (error as Error).message === "QUOTA_EXCEEDED";
+      setErrors(prev => ({ 
+        ...prev, 
+        [outfit.type]: { 
+          message: isQuota ? "Studio editorial staff busy. Please try again in a moment." : "Transformation failed. Tap to retry.", 
+          type: 'model' 
+        } 
+      }));
     } finally {
       setGeneratingModels(prev => ({ ...prev, [outfit.type]: false }));
     }
@@ -151,270 +177,362 @@ export default function App() {
     }
   };
 
+  const getOutfitLabel = (type: string) => {
+    switch (type) {
+      case "Casual": return "Casual Wear";
+      case "Business": return "Professional Outfit";
+      case "Night Out": return "Night Out Outfit";
+      default: return type;
+    }
+  };
+
   return (
-    <div className="min-h-screen p-6 max-w-[1440px] mx-auto overflow-hidden">
-      <div className="grid grid-cols-12 auto-rows-min gap-4 h-full">
-        {/* Header Section */}
-        <header className="col-span-12 bento-card flex items-center justify-between px-8 py-6 bg-white">
-          <div className="flex items-center gap-4">
-            <div className="w-10 h-10 bg-black rounded-lg flex items-center justify-center">
-              <div className="w-4 h-4 border-2 border-white rotate-45"></div>
-            </div>
-            <div>
-              <h1 className="text-xl font-bold tracking-tighter uppercase">VogueAI Stylist</h1>
-              <p className="text-[10px] uppercase tracking-widest text-black/40 font-semibold">AI Personal Shopper</p>
-            </div>
+    <div className="min-h-screen bg-brand-bg px-4 py-12 md:px-16 max-w-[1800px] mx-auto transition-all duration-1000 flex flex-col">
+      <header className="flex flex-col items-center mb-16 text-center space-y-6">
+        <motion.div 
+          initial={{ y: -20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          className="flex flex-col items-center space-y-3"
+        >
+          <div className="flex items-center gap-4 mb-2">
+            <div className="h-[1px] w-12 bg-brand-gold/30"></div>
+            <span className="text-[10px] font-bold uppercase tracking-[0.5em] text-brand-gold">The Future of Fashion</span>
+            <div className="h-[1px] w-12 bg-brand-gold/30"></div>
           </div>
-          
-          <div className="flex gap-6 items-center">
-            {result && (
-              <div className="text-right hidden md:block">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-black/40">Analyzing Style</p>
-                <p className="text-xs font-semibold text-brand-business truncate max-w-[200px]">{result.itemDescription}</p>
-              </div>
-            )}
-            <button 
-              onClick={() => { setImage(null); setResult(null); }}
-              className="bg-black text-white px-6 py-2 rounded-full text-xs font-bold hover:bg-zinc-800 transition-colors uppercase tracking-widest"
-            >
-              New Scan
-            </button>
-          </div>
-        </header>
+          <h1 className="text-6xl md:text-8xl font-display leading-[0.9] text-brand-black italic gold-glow">
+            Style<span className="text-brand-gold not-italic">Sync</span>
+          </h1>
+        </motion.div>
+      </header>
 
-        {/* Input Column */}
-        <section className={`${result ? "col-span-12 lg:col-span-5" : "col-span-12"} transition-all duration-500`}>
-          <div className="bento-card h-full flex flex-col bg-white">
-            <div className="p-6 border-b border-black/5 flex justify-between items-center">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-black/40">Input Source</span>
-              {image && (
-                <span className="px-3 py-1 bg-brand-business/10 text-brand-business rounded-full text-[10px] font-bold uppercase">
-                  Verified Texture
-                </span>
-              )}
-            </div>
-
-            <div className={`relative flex-1 ${result ? "min-h-[400px]" : "min-h-[60vh]"} bg-[#EEEEEA] flex items-center justify-center p-8 group overflow-hidden`}>
-              <input 
-                type="file" 
-                ref={fileInputRef}
-                onChange={handleFileUpload}
-                accept="image/*"
-                className="hidden"
-              />
-              
-              {!image ? (
-                <div 
-                  onClick={() => fileInputRef.current?.click()}
-                  className="flex flex-col items-center gap-4 cursor-pointer hover:scale-105 transition-transform duration-500"
-                >
-                  <div className="w-20 h-20 rounded-full bg-white shadow-xl flex items-center justify-center group-hover:bg-black transition-colors">
-                    <Camera className="w-8 h-8 text-black/20 group-hover:text-white" />
-                  </div>
-                  <div className="text-center">
-                    <p className="font-display font-bold text-xl tracking-tight uppercase">Analyze Your Style</p>
-                    <p className="text-black/40 text-[11px] font-medium uppercase tracking-widest">Upload your photo for a total makeover</p>
-                  </div>
-                </div>
-              ) : (
-                <div className="relative w-full h-full flex items-center justify-center">
-                  <motion.div 
-                    initial={{ scale: 0.9, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    className="relative z-10 w-full max-w-sm aspect-[3/4] rounded-2xl shadow-2xl overflow-hidden border-8 border-white"
-                  >
-                    <img src={image} alt="Source" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                    {analyzing && (
-                      <motion.div 
-                        initial={{ top: "-10%" }}
-                        animate={{ top: "110%" }}
-                        transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
-                        className="scanner-beam z-20"
-                        style={{ background: 'linear-gradient(to bottom, transparent, rgba(0,0,0,0.5), transparent)' }}
-                      />
-                    )}
-                  </motion.div>
-
-                  {result && (
-                    <motion.div 
-                      initial={{ y: 20, opacity: 0 }}
-                      animate={{ y: 0, opacity: 1 }}
-                      className="absolute bottom-4 left-4 right-4 bg-white/90 backdrop-blur-md p-4 rounded-xl border border-white/50 shadow-lg z-20"
-                    >
-                      <div className="flex gap-2 mb-2 flex-wrap">
-                        {result.styleTags.slice(0, 3).map(tag => (
-                          <span key={tag} className="text-[9px] font-bold uppercase tracking-widest text-black/40 italic">#{tag}</span>
-                        ))}
-                      </div>
-                      <p className="text-[11px] font-bold leading-tight line-clamp-2">{result.itemDescription}</p>
-                    </motion.div>
-                  )}
-
-                  <button 
-                    onClick={() => fileInputRef.current?.click()}
-                    className="absolute top-4 right-4 bg-white/20 hover:bg-white/40 backdrop-blur p-2 rounded-full transition-colors z-20"
-                  >
-                    <RefreshCw className="w-4 h-4 text-black" />
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {image && !result && (
-              <div className="p-6 bg-white">
-                <motion.button
-                  onClick={startAnalysis}
-                  disabled={analyzing}
-                  className="w-full bg-black text-white h-14 rounded-2xl font-bold uppercase tracking-widest flex items-center justify-center gap-3 hover:bg-zinc-800 disabled:opacity-50 transition-all shadow-lg"
-                >
-                  {analyzing ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      <span>Synthesizing...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-5 h-5 text-brand-business" />
-                      <span>Start Style Analysis</span>
-                    </>
-                  )}
-                </motion.button>
-              </div>
-            )}
-          </div>
-        </section>
-
-        {/* Results Sections */}
+      <div className="w-full">
         {!result ? (
-          <section className="col-span-12 lg:col-span-7 flex flex-col gap-4">
-            <div className="bento-card flex-1 bg-white p-12 flex flex-col items-center justify-center text-center space-y-6">
-              <div className="w-24 h-24 border-2 border-dashed border-black/10 rounded-3xl flex items-center justify-center text-black/10">
-                <Layers className="w-12 h-12" />
-              </div>
-              <div>
-                <h2 className="text-3xl font-display font-bold uppercase tracking-tighter">Personal Style Curation</h2>
-                <p className="text-black/40 max-w-xs mx-auto mt-2 font-medium">Upload a full photo to see our AI generate three distinct, complementary style paths for you.</p>
+          <section className="max-w-2xl mx-auto w-full">
+            <div className="luxury-card min-h-[420px] flex flex-col bg-white border border-brand-gold/5 overflow-hidden">
+              <div className="relative flex-1 bg-white flex flex-col items-center justify-center p-12 group overflow-hidden">
+                <input 
+                  type="file" 
+                  ref={fileInputRef}
+                  onChange={handleFileUpload}
+                  accept="image/*"
+                  className="hidden"
+                />
+                
+                {!image ? (
+                  <motion.div 
+                    onClick={() => fileInputRef.current?.click()}
+                    whileHover={{ scale: 1.02 }}
+                    className="flex flex-col items-center gap-4 cursor-pointer"
+                  >
+                    <div className="text-brand-gold group-hover:scale-110 transition-transform duration-500">
+                      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                    </div>
+                    <div className="text-center space-y-1">
+                      <p className="font-display text-4xl tracking-tight text-brand-black italic">Portrait Photo</p>
+                      <p className="text-brand-black/40 text-[9px] font-bold uppercase tracking-[0.4em]">REQUIRED</p>
+                    </div>
+                  </motion.div>
+                ) : (
+                  <div className="relative w-full h-full flex flex-col items-center gap-8">
+                    <motion.div 
+                      initial={{ scale: 0.9, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      className="relative z-10 w-full max-w-md aspect-[3/4] rounded-3xl shadow-2xl overflow-hidden border-[12px] border-white ring-1 ring-brand-gold/10 bg-brand-bg"
+                    >
+                      <img src={image} alt="Source" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      {analyzing && (
+                        <motion.div 
+                          initial={{ top: "-10%" }}
+                          animate={{ top: "110%" }}
+                          transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
+                          className="scanner-beam z-20"
+                        />
+                      )}
+                    </motion.div>
+
+                    {!analyzing && (
+                      <div className="flex flex-col items-center gap-6">
+                        {errors.global && (
+                          <div className="text-center p-4 bg-brand-gold/5 rounded-2xl border border-brand-gold/10">
+                            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-brand-gold mb-1">Studio Update</p>
+                            <p className="text-[11px] font-medium text-black/60 italic">{errors.global.message}</p>
+                          </div>
+                        )}
+                        <div className="flex gap-4">
+                          <button 
+                            onClick={() => fileInputRef.current?.click()}
+                            className="px-8 py-3 rounded-full border border-brand-gold/20 text-[11px] font-bold uppercase tracking-widest text-brand-gold hover:bg-brand-gold hover:text-white transition-all"
+                          >
+                            Change Photo
+                          </button>
+                          <button
+                            onClick={startAnalysis}
+                            className="px-10 py-3 rounded-full bg-brand-gold text-white text-[11px] font-bold uppercase tracking-widest hover:bg-brand-gold/90 transition-all shadow-lg flex items-center gap-2"
+                          >
+                            <Sparkles className="w-4 h-4" />
+                            Begin Transformation
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </section>
         ) : (
-          <section className="col-span-12 lg:col-span-7 flex flex-col gap-4">
-            {result.outfits.map((outfit, idx) => {
-              const themeColor = outfit.type === "Casual" ? "text-[#3B82F6]" : outfit.type === "Business" ? "text-[#10B981]" : "text-[#F43F5E]";
-              const bgColor = outfit.type === "Casual" ? "bg-[#EFF6FF]" : outfit.type === "Business" ? "bg-[#ECFDF5]" : "bg-[#141416]";
-              const isDark = outfit.type === "Night Out";
+          <div className="flex flex-col lg:flex-row gap-12 lg:gap-20 items-start py-8">
+            {/* Left Column: Original Item */}
+            <div className="w-full lg:w-[35%] transition-all duration-1000">
+               <motion.div 
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="relative aspect-[3/4] rounded-[32px] overflow-hidden bg-white shadow-[0_40px_80px_rgba(0,0,0,0.08)] ring-1 ring-brand-gold/10 p-6"
+               >
+                 <div className="absolute top-8 left-8 z-10 bg-brand-gold text-white text-[8px] font-black uppercase tracking-[0.2em] px-3 py-1 rounded-full">
+                   SOURCE
+                 </div>
+                 <img src={image} alt="Original" className="w-full h-full object-cover rounded-[20px]" />
+               </motion.div>
+               <div className="mt-8 px-4">
+                 <h3 className="font-display text-2xl text-brand-black mb-2 italic">Captured Silhouette</h3>
+                 <p className="text-[11px] text-brand-black/40 font-medium leading-relaxed uppercase tracking-widest">{result.itemDescription}</p>
+                 <button 
+                  onClick={() => { setImage(null); setResult(null); }}
+                  className="mt-6 text-brand-gold text-[9px] font-bold uppercase tracking-[0.3em] hover:opacity-70 transition-opacity flex items-center gap-3"
+                 >
+                    <RefreshCw className="w-3 h-3" />
+                    New transformation
+                 </button>
+               </div>
+            </div>
 
-              return (
-                <motion.div 
-                  key={outfit.type}
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: idx * 0.1 }}
-                  className={`bento-card ${bgColor} ${isDark ? 'text-white' : 'text-black'} p-6 flex flex-col md:flex-row gap-6 shadow-sm`}
-                >
-                  <div className={`md:w-1/3 flex flex-col justify-center ${isDark ? 'border-white/10' : 'border-black/5'} md:border-r md:pr-6`}>
-                    <div className={`${themeColor} ${idx === 2 ? 'bg-rose-500 text-white' : 'bg-white/50 backdrop-blur'} w-fit px-3 py-1 rounded-full text-[9px] font-black uppercase mb-3 italic tracking-widest`}>
-                      {outfit.type}
-                    </div>
-                    <h3 className="font-bold text-xl leading-tight uppercase tracking-tighter mb-2">{outfit.type === "Casual" ? "Weekend Flow" : outfit.type === "Business" ? "Professional Pulse" : "Rooftop Soirée"}</h3>
-                    <p className={`text-[11px] ${isDark ? 'text-white/60' : 'text-black/50'} leading-relaxed font-medium`}>{outfit.description}</p>
-                  </div>
-                  
-                  <div className="flex-1 flex flex-col gap-4">
-                    <div className="flex gap-4 items-center justify-between">
-                      <div className="flex gap-2">
-                        <button 
-                          onClick={() => {
-                            setResult(prev => {
-                              if (!prev) return null;
-                              return {
-                                ...prev,
-                                outfits: prev.outfits.map(o => 
-                                  o.type === outfit.type ? { ...o, modelImage: undefined } : o
-                                )
-                              };
-                            });
-                          }}
-                          className={`px-4 py-1.5 rounded-full text-[10px] font-bold transition-all ${!outfit.modelImage && !generatingModels[outfit.type] ? 'bg-black text-white' : 'bg-black/5 text-black hover:bg-black/10'}`}
-                        >
-                          Flat-lay
-                        </button>
-                        <button 
-                          onClick={() => generateModelView(outfit)}
-                          className={`px-4 py-1.5 rounded-full text-[10px] font-bold transition-all flex items-center gap-2 ${outfit.modelImage ? 'bg-brand-business text-white' : 'bg-black/5 text-black hover:bg-black/10'}`}
-                        >
-                          {generatingModels[outfit.type] ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Camera className="w-3 h-3" />}
-                          {outfit.modelImage ? 'Editorial Ready' : 'Editorial View'}
-                        </button>
-                      </div>
+            {/* Right Column: Title + Gallery */}
+            <div className="w-full lg:w-[65%]">
+              <div className="mb-16 flex flex-col items-center text-center">
+                <h2 className="text-4xl md:text-5xl font-display text-brand-black italic mb-6">Heritage <span className="text-brand-gold">Preview</span></h2>
+                <div className="h-[2px] w-24 bg-brand-gold brand-shimmer rounded-full"></div>
+              </div>
 
-                      {(outfit.image || outfit.modelImage) && (
-                        <button 
-                          onClick={() => handleWearNow(outfit.type)}
-                          className={`flex items-center gap-2 text-[10px] font-black uppercase tracking-widest px-4 py-1.5 rounded-full transition-all border border-current hover:bg-current hover:invert`}
-                        >
-                          <Download className="w-3 h-3" />
-                          Wear Now
-                        </button>
-                      )}
-                    </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {result.outfits.map((outfit, idx) => (
+                  <motion.div
+                    key={outfit.type}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: idx * 0.1 }}
+                    className="relative group cursor-pointer"
+                    onClick={() => {
+                      if (errors[outfit.type]?.type === 'model') {
+                        generateModelView(outfit);
+                        return;
+                      }
+                      if (!outfit.image && !outfit.modelImage) {
+                         generateImage(outfit);
+                      } else {
+                         setSelectedOutfitIdx(idx);
+                         setIsModalOpen(true);
+                      }
+                    }}
+                  >
+                    <div className="aspect-[2/3] rounded-[24px] overflow-hidden bg-[#eeede9] relative shadow-lg group-hover:shadow-2xl transition-all duration-500">
+                       <AnimatePresence mode="wait">
+                          {outfit.modelImage ? (
+                             <motion.div 
+                               initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                               className="w-full h-full bg-brand-black/5 p-4"
+                             >
+                               <img 
+                                 key="model"
+                                 src={outfit.modelImage} 
+                                 className="w-full h-full object-contain" 
+                               />
+                             </motion.div>
+                          ) : outfit.image ? (
+                             <div className="relative w-full h-full">
+                               <motion.img 
+                                 key="flat"
+                                 initial={{ opacity: 0 }} animate={{ opacity: 1 }} 
+                                 src={outfit.image} className="w-full h-full object-cover" 
+                               />
+                               {errors[outfit.type]?.type === 'model' && !generatingModels[outfit.type] && (
+                                 <div className="absolute inset-0 bg-brand-black/40 backdrop-blur-[2px] flex flex-col items-center justify-center p-4 text-white text-center">
+                                   <RefreshCw className="w-6 h-6 mb-2 text-brand-gold" />
+                                   <p className="text-[10px] font-bold uppercase tracking-widest">Studio Busy</p>
+                                   <p className="text-[8px] font-medium italic opacity-80">Tap to retry transformation</p>
+                                 </div>
+                               )}
+                               {generatingModels[outfit.type] && (
+                                 <div className="absolute inset-0 bg-white/40 backdrop-blur-sm flex items-center justify-center">
+                                   <div className="w-8 h-8 border-2 border-brand-gold border-t-transparent rounded-full animate-spin" />
+                                 </div>
+                               )}
+                             </div>
+                          ) : (
+                             <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center">
+                              {generatingImages[outfit.type] || generatingModels[outfit.type] ? (
+                                <div className="flex flex-col items-center gap-4">
+                                   <div className="w-8 h-8 border-2 border-brand-gold border-t-transparent rounded-full animate-spin" />
+                                   <span className="text-[8px] font-bold uppercase tracking-[0.2em] text-brand-gold italic">
+                                     {generatingModels[outfit.type] ? 'Editorial transformation in progress...' : 'Composing layout...'}
+                                   </span>
+                                   <p className="text-[7px] text-brand-black/30 uppercase tracking-tighter">Please wait, refining essence</p>
+                                </div>
+                               ) : (
+                                 <div className="flex flex-col items-center gap-3 group-hover:scale-110 transition-transform">
+                                    <Sparkles className="w-6 h-6 text-brand-gold/20" />
+                                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-brand-black/20 italic">Awaiting Palette</p>
+                                 </div>
+                               )}
+                             </div>
+                          )}
+                       </AnimatePresence>
 
-                    <div 
-                      ref={el => outfitRefs.current[outfit.type] = el}
-                      className="flex-1 flex gap-4 overflow-hidden relative min-h-[220px]"
-                    >
-                      <AnimatePresence mode="wait">
-                        {outfit.modelImage ? (
-                          <motion.div 
-                            key="model"
-                            initial={{ opacity: 0 }} 
-                            animate={{ opacity: 1 }} 
-                            exit={{ opacity: 0 }}
-                            className="w-full h-full rounded-2xl overflow-hidden shadow-inner bg-black/5"
-                          >
-                            <img src={outfit.modelImage} alt="Model wear" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                          </motion.div>
-                        ) : outfit.image ? (
-                          <motion.div 
-                            key="flat"
-                            initial={{ opacity: 0 }} 
-                            animate={{ opacity: 1 }} 
-                            exit={{ opacity: 0 }}
-                            className="w-full h-full relative rounded-2xl overflow-hidden group/img shrink-0"
-                          >
-                            <img src={outfit.image} alt={outfit.type} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center p-4">
-                              <ul className="text-[10px] font-bold uppercase tracking-widest text-center space-y-1">
-                                {outfit.pieces.map(p => <li key={p}>{p}</li>)}
-                              </ul>
-                            </div>
-                          </motion.div>
-                        ) : (
-                          <div className="w-full h-full flex flex-col items-center justify-center bg-white/5 rounded-2xl border border-white/10 border-dashed">
-                            {generatingImages[outfit.type] || generatingModels[outfit.type] ? (
-                              <div className="flex flex-col items-center gap-2">
-                                <div className="w-6 h-6 border-2 border-brand-business border-t-white rounded-full animate-spin" />
-                                <span className="text-[10px] font-bold uppercase tracking-widest">Designing...</span>
-                              </div>
-                            ) : (
-                              <button 
-                                onClick={() => generateImage(outfit)}
-                                className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl transition-all hover:scale-105 ${isDark ? 'bg-white text-black' : 'bg-black text-white'}`}
-                              >
-                                Visualize Ensemble
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </AnimatePresence>
+                       {/* Card Overlay */}
+                       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-60 group-hover:opacity-80 transition-opacity"></div>
+                       
+                       <div className="absolute bottom-0 left-0 right-0 p-8 text-white z-20">
+                          <h4 className="font-display text-2xl mb-1 italic">
+                            {getOutfitLabel(outfit.type)}
+                          </h4>
+                          <p className="text-[10px] font-bold uppercase tracking-[0.4em] text-brand-gold/90">Curated Context</p>
+                       </div>
                     </div>
-                  </div>
-                </motion.div>
-              );
-            })}
-          </section>
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+          </div>
         )}
       </div>
+
+      {/* Expanded Modal */}
+      <AnimatePresence>
+        {isModalOpen && selectedOutfitIdx !== null && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-8 bg-black/60 backdrop-blur-xl"
+            onClick={() => setIsModalOpen(false)}
+          >
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="bg-white w-full max-w-6xl h-full max-h-[90vh] rounded-[48px] overflow-hidden flex flex-col lg:flex-row shadow-2xl relative"
+              onClick={e => e.stopPropagation()}
+            >
+               <button 
+                onClick={() => setIsModalOpen(false)}
+                className="absolute top-8 right-8 z-20 w-12 h-12 rounded-full bg-white/20 backdrop-blur-md text-white hover:bg-white hover:text-black transition-all flex items-center justify-center"
+               >
+                 <ArrowRight className="w-5 h-5 rotate-180" />
+               </button>
+
+               {(() => {
+                 const outfit = result!.outfits[selectedOutfitIdx];
+                 return (
+                   <>
+                    <div 
+                      ref={el => outfitRefs.current[outfit.type] = el}
+                      className="w-full lg:w-1/2 h-[50vh] lg:h-full bg-brand-bg relative overflow-hidden"
+                    >
+                      <AnimatePresence mode="wait">
+                        <motion.div
+                          key={outfit.modelImage ? 'model' : 'flat'}
+                          initial={{ opacity: 0, scale: 0.95 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          className="w-full h-full flex items-center justify-center p-8 bg-brand-black/[0.02]"
+                        >
+                          <img 
+                            src={outfit.modelImage || outfit.image} 
+                            className={`max-w-full max-h-full rounded-2xl shadow-xl ${outfit.modelImage ? 'object-contain' : 'object-cover h-full w-full'}`} 
+                          />
+                        </motion.div>
+                      </AnimatePresence>
+                      
+                      <div className="absolute bottom-8 left-8 right-8 flex justify-between items-center z-10">
+                         <div className="flex gap-2">
+                           <button 
+                            disabled={generatingModels[outfit.type]}
+                            onClick={(e) => { e.stopPropagation(); generateModelView(outfit); }}
+                            className={`px-4 py-2 rounded-full backdrop-blur-md text-[9px] font-bold uppercase tracking-widest transition-all ${outfit.modelImage ? 'bg-brand-gold text-white' : 'bg-white/20 text-white hover:bg-white/40'}`}
+                           >
+                             {generatingModels[outfit.type] ? 'Styling Presence...' : errors[outfit.type]?.type === 'model' ? 'Retry Transformation' : 'Experience Transformation'}
+                           </button>
+                           <button 
+                            disabled={generatingModels[outfit.type]}
+                            onClick={(e) => { e.stopPropagation(); setResult(prev => ({...prev!, outfits: prev!.outfits.map(o => o.type === outfit.type ? {...o, modelImage: undefined} : o)})); }}
+                            className={`px-4 py-2 rounded-full backdrop-blur-md text-[9px] font-bold uppercase tracking-widest transition-all ${!outfit.modelImage ? 'bg-brand-gold text-white' : 'bg-white/20 text-white hover:bg-white/40'}`}
+                           >
+                             Flat-lay
+                           </button>
+                         </div>
+                         <button 
+                          onClick={() => handleWearNow(outfit.type)}
+                          className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center shadow-lg hover:scale-110 transition-transform"
+                         >
+                           <Download className="w-4 h-4" />
+                         </button>
+                      </div>
+                    </div>
+
+                    <div className="w-full lg:w-1/2 p-16 flex flex-col justify-center overflow-y-auto bg-white">
+                      <div className="mb-12">
+                        <span className="text-[11px] font-bold uppercase tracking-[0.6em] text-brand-gold mb-4 block italic">Exclusive {getOutfitLabel(outfit.type)}</span>
+                        <h2 className="text-6xl font-display text-brand-black leading-[0.9] italic mb-8">
+                           The <span className="text-brand-gold">Aura</span> of Perfection
+                        </h2>
+                        <div className="h-[2px] w-16 bg-brand-gold/20 mb-10"></div>
+                        <p className="text-md font-medium text-brand-black/50 leading-relaxed italic pr-12">
+                          {outfit.description}
+                        </p>
+                      </div>
+
+                      <div className="space-y-6">
+                         <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-brand-black border-b border-brand-gold/10 pb-4 italic">Composition</h4>
+                         <ul className="grid grid-cols-2 gap-4">
+                           {outfit.pieces.map((piece, i) => (
+                             <motion.li 
+                              initial={{ opacity: 0, x: -10 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              transition={{ delay: i * 0.1 }}
+                              key={piece} 
+                              className="text-[11px] font-bold uppercase tracking-widest text-brand-black/40 flex items-center gap-3"
+                             >
+                               <div className="w-1.5 h-1.5 rounded-full bg-brand-gold/20" />
+                               {piece}
+                             </motion.li>
+                           ))}
+                         </ul>
+                      </div>
+
+                      <div className="mt-12 flex gap-4">
+                         {result!.styleTags.slice(0, 4).map(tag => (
+                           <span key={tag} className="text-[8px] font-bold border border-brand-gold/20 text-brand-gold px-3 py-1.5 rounded-full uppercase tracking-tighter">
+                             #{tag}
+                           </span>
+                         ))}
+                      </div>
+                    </div>
+                   </>
+                 );
+               })()}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <footer className="mt-auto py-12 flex flex-col items-center gap-6 border-t border-brand-accent/5">
+        <div className="flex items-center gap-4">
+          <div className="h-[1px] w-16 bg-brand-gold/20"></div>
+          <Sparkles className="w-5 h-5 text-brand-gold" />
+          <div className="h-[1px] w-16 bg-brand-gold/20"></div>
+        </div>
+        <p className="text-[10px] font-bold uppercase tracking-[0.4em] text-brand-black/30 italic">
+          build with ❤️ by <span className="text-brand-black">Aravind S Gudi</span>
+        </p>
+      </footer>
     </div>
   );
 }
